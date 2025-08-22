@@ -1,5 +1,6 @@
 package io.github.illuminatijoe.voxelgame;
 
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
@@ -8,6 +9,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g3d.ModelBatch;
 import com.badlogic.gdx.graphics.g3d.shaders.DefaultShader;
+import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.utils.ScreenUtils;
 
 public class VoxelGame extends ApplicationAdapter {
@@ -40,10 +42,7 @@ public class VoxelGame extends ApplicationAdapter {
         textureArray.setWrap(Texture.TextureWrap.Repeat, Texture.TextureWrap.Repeat);
         textureArray.setFilter(Texture.TextureFilter.MipMapNearestNearest, Texture.TextureFilter.Nearest);
 
-        BlockShader.Config cfg = new DefaultShader.Config();
-        cfg.vertexShader = Gdx.files.internal("data/shaders/texturearray.vert").readString();
-        cfg.fragmentShader = Gdx.files.internal("data/shaders/texturearray.frag").readString();
-        blockShaderProvider = new BlockShaderProvider(cfg, textureArray);
+        blockShaderProvider = new BlockShaderProvider(textureArray);
         modelBatch = new ModelBatch(blockShaderProvider);
 
         Gdx.app.log("GL", "Texture array supported: " + Gdx.graphics.supportsExtension("GL_EXT_texture_array"));
@@ -67,8 +66,10 @@ public class VoxelGame extends ApplicationAdapter {
         spriteBatch.begin();
             bitmapFont.draw(spriteBatch, "FPS: " + Gdx.graphics.getFramesPerSecond(), 10, 20);
             bitmapFont.draw(spriteBatch, "Memory: " + Gdx.app.getJavaHeap() / 1000 / 1000 + " MB", 10, 40);
-            bitmapFont.draw(spriteBatch, "Chunks Rendered: " + world.chunkManager.chunkRenderList.size(), 10, 60);
-            bitmapFont.draw(spriteBatch, "Chunks Loaded: " + world.chunkManager.chunks.size(), 10, 80);
+            bitmapFont.draw(spriteBatch, "Chunks Loaded: " + world.chunkManager.chunks.size(), 10, 60);
+            bitmapFont.draw(spriteBatch, "Chunks LoadQ: " + world.chunkManager.chunkLoadList.size(), 10, 80);
+            bitmapFont.draw(spriteBatch, "Chunks UnloadQ: " + world.chunkManager.chunkUnloadList.size(), 10, 100);
+            bitmapFont.draw(spriteBatch, "Chunks Rendered: " + world.chunkManager.chunkRenderList.size(), 10, 120);
         spriteBatch.end();
         // End render
     }
