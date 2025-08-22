@@ -5,10 +5,12 @@ import com.badlogic.gdx.math.Vector3;
 import io.github.illuminatijoe.voxelgame.util.VoxelUtils;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class ChunkManager {
-    public static final int ASYNC_NUM_CHUNKS_PER_FRAME = 4;
+    public static final int ASYNC_NUM_CHUNKS_PER_FRAME = 8;
     public static int RENDER_DISTANCE = 8;
 
     private final World world;
@@ -17,11 +19,11 @@ public class ChunkManager {
     private Chunk playerChunk;
 
     public List<Chunk> chunkRenderList = new ArrayList<>();
-    private List<Chunk> chunkLoadList = new ArrayList<>();
-    private List<Chunk> chunkSetupList = new ArrayList<>();
+    public List<Chunk> chunkLoadList = new ArrayList<>();
+    public List<Chunk> chunkSetupList = new ArrayList<>();
     private List<Chunk> chunkRebuildList = new ArrayList<>();
     private List<Chunk> chunkUpdateFlagsList = new ArrayList<>();
-    private List<Chunk> chunkUnloadList = new ArrayList<>();
+    public List<Chunk> chunkUnloadList = new ArrayList<>();
     public List<Chunk> chunks = new ArrayList<>();
 
     private Vector3 previousCameraPosition;
@@ -33,21 +35,21 @@ public class ChunkManager {
         this.previousCameraPosition = player.position;
 
         playerChunk = getChunkFromWorldPosition(player.position);
-        previousPlayerChunk = playerChunk;
+        previousPlayerChunk = null;
         forceVisibilityUpdate = true;
     }
 
     public void update(float delta, PerspectiveCamera camera) {
-        updateAsyncChunker();
+        //updateAsyncChunker();
         updateLoadList();
         updateSetupList();
         updateRebuildList();
-        updateFlagsList();
+        //updateFlagsList();
         updateUnloadList();
         updateVisibilityList();
-        if (!previousCameraPosition.equals(camera.position)) {
+        //if (!previousCameraPosition.equals(camera.position)) {
             updateRenderList();
-        }
+        //}
 
         previousCameraPosition.set(camera.position);
     }
@@ -127,10 +129,15 @@ public class ChunkManager {
 
     // Unloads chunks that should be loaded, forces a visibility update
     public void updateUnloadList() {
+        int numUnloadedChunks = 0;
+
         for (Chunk chunk : chunkUnloadList) {
-            if (chunk.isLoaded()) {
+            if (numUnloadedChunks <= ASYNC_NUM_CHUNKS_PER_FRAME * 8) {
                 chunk.unload();
+                world.unloadChunk(chunk);
+                chunks.remove(chunk);
                 forceVisibilityUpdate = true;
+                numUnloadedChunks++;
             }
         }
 
@@ -140,17 +147,12 @@ public class ChunkManager {
     // Checks if the chunks is in the cam frustum and adds them to the render list
     public void updateRenderList() {
         List<Chunk> visibleChunks = new ArrayList<>();
-        for (Chunk chunk : chunkRenderList) {
-            if (chunk != null) {
-                if (chunk.isLoaded() && chunk.isSetup() && chunk.shouldRender()) {
-                    if (chunk.shouldRender()) {
-                        // TODO: Check if the chunk is in the frustum and only render then
-                        visibleChunks.add(chunk);
-                    }
-                }
+        for (Chunk chunk : chunks) {
+            if (chunk.isLoaded() && chunk.isSetup() && chunk.shouldRender() && !chunk.isEmpty()) {
+                // TODO: Check if the chunk is in the frustum and only render then
+                visibleChunks.add(chunk);
             }
         }
-
         chunkRenderList = visibleChunks;
     }
 
@@ -159,54 +161,86 @@ public class ChunkManager {
     }
 
     public void updateVisibilityList() {
-        Chunk newChunk = getChunkFromWorldPosition(player.position);
-        if (newChunk != null) playerChunk = newChunk;
+        Chunk newPlayerChunk = getChunkFromWorldPosition(player.position);
+        if (newPlayerChunk != null) playerChunk = newPlayerChunk;
 
-        // Look for new chunks, only if the player has crossed the chunk border
+        // Generate initial chunks if the previousPlayerChunk is null
         if (previousPlayerChunk == null) {
-            previousPlayerChunk = playerChunk;
-            forceVisibilityUpdate = true;
             for (int dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
                 for (int dy = -RENDER_DISTANCE; dy <= RENDER_DISTANCE; dy++) {
                     for (int dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz++) {
-                        Chunk chunk = getChunk(playerChunk.getX() + dx, playerChunk.getY() + dy, playerChunk.getZ() + dz);
-                        if (chunk != null && !chunks.contains(chunk)) {
-                            chunks.add(chunk);
+                        int cx = playerChunk.getX() + dx;
+                        int cy = playerChunk.getY() + dy;
+                        int cz = playerChunk.getZ() + dz;
+
+                        Chunk chunk = getChunk(cx, cy, cz);
+                        if (!chunks.contains(chunk)) {
+                            chunks.add(chunk); // add the chunk to the chunk list
                         }
                     }
                 }
             }
+
+            // Update the previous player chunk
+            previousPlayerChunk = playerChunk;
+            forceVisibilityUpdate = true;
         }
+
+        // Look for new chunks only if the player has crossed the chunk border
+        if (!previousPlayerChunk.equals(playerChunk)) {
+            int movementX = playerChunk.getX() - previousPlayerChunk.getX();
+            int movementY = playerChunk.getY() - previousPlayerChunk.getY();
+            int movementZ = playerChunk.getZ() - previousPlayerChunk.getZ();
+
+            // Only process axes where the player actually moved
+            for (int dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
+                for (int dy = -RENDER_DISTANCE; dy <= RENDER_DISTANCE; dy++) {
+                    for (int dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz++) {
+
+                        int cx = playerChunk.getX() + dx;
+                        int cy = playerChunk.getY() + dy;
+                        int cz = playerChunk.getZ() + dz;
+
+                        // Only add new chunks along the "front" slice in the direction of movement
+                        boolean addX = (movementX != 0) && (cx - playerChunk.getX() == movementX * RENDER_DISTANCE);
+                        boolean addY = (movementY != 0) && (cy - playerChunk.getY() == movementY * RENDER_DISTANCE);
+                        boolean addZ = (movementZ != 0) && (cz - playerChunk.getZ() == movementZ * RENDER_DISTANCE);
+
+                        if (addX || addY || addZ) {
+                            Chunk chunk = getChunk(cx, cy, cz);
+                            if (!chunks.contains(chunk)) {
+                                chunks.add(chunk);
+                            }
+                        }
+                    }
+                }
+            }
+
+            previousPlayerChunk = playerChunk;
+            forceVisibilityUpdate = true;
+        }
+
 
         for (Chunk chunk : chunks) {
             // check each chunk and see if they should be unloaded (by distance)
-            if (VoxelUtils.manhattanDistance(playerChunk.getX(), playerChunk.getY(), playerChunk.getZ(),
-                chunk.getX(), chunk.getY(), chunk.getZ()) >= RENDER_DISTANCE) {
-                if (!chunkUnloadList.contains(chunk)) {
-                    chunkUnloadList.add(chunk);
-                }
+            if (VoxelUtils.squareDistance(playerChunk.getX(), playerChunk.getY(), playerChunk.getZ(),
+                chunk.getX(), chunk.getY(), chunk.getZ()) > RENDER_DISTANCE) {
+                chunkUnloadList.add(chunk);
                 continue;
             }
             // check if chunks are not loaded and load them
             if (!chunk.isLoaded()) {
-                if (!chunkLoadList.contains(chunk)) {
-                    chunkLoadList.add(chunk);
-                }
+                chunkLoadList.add(chunk);
                 continue;
             }
             // check if chunks are not setup and set them up
             if (chunk.isLoaded() && !chunk.isSetup()) {
-                if (!chunkSetupList.contains(chunk)) {
-                    chunkSetupList.add(chunk);
-                }
+                chunkSetupList.add(chunk);
                 continue;
             }
             // add all the ready chunks to rendering
             if (chunk.isLoaded() && chunk.isSetup()) {
                 chunk.setShouldRender(true);
-                if (!chunkRenderList.contains(chunk)) {
-                    chunkRenderList.add(chunk);
-                }
             }
         }
     }

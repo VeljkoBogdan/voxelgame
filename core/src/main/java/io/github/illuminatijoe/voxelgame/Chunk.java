@@ -257,7 +257,6 @@ public class Chunk implements Disposable {
             }
         }
 
-
         isLoaded = true;
     }
 
@@ -306,5 +305,9 @@ public class Chunk implements Disposable {
 
     public void setShouldRender(boolean shouldRender) {
         this.shouldRender = shouldRender;
+    }
+
+    public boolean isEmpty() {
+        return chunkModel.meshes.isEmpty();
     }
 }

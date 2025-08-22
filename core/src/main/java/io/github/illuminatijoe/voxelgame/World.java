@@ -4,14 +4,19 @@ import com.badlogic.gdx.graphics.g3d.Environment;
 import com.badlogic.gdx.graphics.g3d.ModelBatch;
 import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute;
 import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
+import io.github.illuminatijoe.voxelgame.util.Vec3i;
+
+import java.util.ArrayList;
+import java.util.HashMap;
 
 public class World implements Disposable {
     public static final int WORLD_SIZE = 16;
 
     public Environment environment;
 
-    private Chunk[][][] chunks;
+    private final HashMap<Vec3i, Chunk> chunks;
     public ChunkManager chunkManager;
     public Player player;
 
@@ -19,14 +24,12 @@ public class World implements Disposable {
 
     public World() {
         environment = new Environment();
-        environment.set(ColorAttribute.createAmbientLight(0.4f, 0.4f, 0.4f, 1f));
-        environment.add(new DirectionalLight().set(0.8f, 0.8f, 0.8f, -1f, 0.8f, 0.2f));
+        environment.set(ColorAttribute.createAmbientLight(0.4f, 0.4f, 1f, 0.5f));
+        environment.add(new DirectionalLight().set(0.8f, 0.8f, 1f, -1f, 0.8f, 0.2f));
 
         player = new Player();
-        chunks = new Chunk[WORLD_SIZE][WORLD_SIZE][WORLD_SIZE]; // initialize array
+        chunks = new HashMap<>();
         chunkManager = new ChunkManager(this, player);
-
-        generateWorld();
     }
 
     public void render(ModelBatch modelBatch) {
@@ -40,35 +43,29 @@ public class World implements Disposable {
         player.update(delta);
     }
 
-    public void generateWorld() {
-        chunks = new Chunk[WORLD_SIZE][WORLD_SIZE][WORLD_SIZE];
-        for (int x = 0; x < WORLD_SIZE; x++) {
-            for (int y = 0; y < WORLD_SIZE; y++) {
-                for (int z = 0; z < WORLD_SIZE; z++) {
-                    chunks[x][y][z] = new Chunk(x, y, z); // create chunks
-                }
-            }
-        }
-    }
-
     @Override
     public void dispose() {
-        for (int x = 0; x < WORLD_SIZE; x++) {
-            for (int y = 0; y < WORLD_SIZE; y++) {
-                for (int z = 0; z < WORLD_SIZE; z++) {
-                    if (chunks[x][y][z] != null) { // null safety
-                        chunks[x][y][z].dispose();
-                    }
-                }
-            }
+        for (Chunk chunk : chunks.values()) {
+            chunk.dispose();
         }
     }
 
     public Chunk getChunk(int x, int y, int z) {
-        if (x < 0 || y < 0 || z < 0 ||
-            x >= WORLD_SIZE || y >= WORLD_SIZE || z >= WORLD_SIZE) {
-            return null; // prevent out-of-bounds errors
+        Vec3i key = new Vec3i(x, y, z);
+        Chunk chunk = chunks.get(key);
+
+        if (chunk == null) {
+            // lazy create the chunk
+            chunk = new Chunk(x, y, z);
+            chunks.put(key, chunk);
         }
-        return chunks[x][y][z];
+
+        return chunk;
+    }
+
+    public void unloadChunk(Chunk chunk) {
+        Vec3i key = new Vec3i(chunk.getX(), chunk.getY(), chunk.getZ());
+
+        chunks.remove(key);
     }
 }
